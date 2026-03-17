@@ -18,9 +18,9 @@ echo "Using IP: $IP_ADDR"
 echo ""
 
 # ===== STEP 1: Install dependencies =====
-echo "[1/7] Installing dependencies..."
-sudo apt update
-sudo apt install -y git build-essential cmake libssl-dev curl
+echo "[1/7] Installing dependencies... (ignore)"
+#sudo apt update
+#sudo apt install -y git build-essential cmake libssl-dev curl
 
 # ===== STEP 2: Clone libest =====
 if [ ! -d "$LIBEST_DIR" ]; then
@@ -77,7 +77,7 @@ echo ""
 echo "========================================"
 echo " DEVICE CONFIG VALUES"
 echo "========================================"
-echo "server_url: https://$IP_ADDR/.well-known/est"
+echo "server_url: $IP_ADDR"
 echo "port: $PORT"
 echo "username: estuser"
 echo "password: estpwd"
