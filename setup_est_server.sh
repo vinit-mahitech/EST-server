@@ -38,6 +38,7 @@ cd "$LIBEST_DIR"
 make -j$(nproc)
 sudo make install
 
+# ===== STEP 4: Generate CA =====
 echo "[4/7] Checking existing CA..."
 
 cd "$SERVER_DIR"
