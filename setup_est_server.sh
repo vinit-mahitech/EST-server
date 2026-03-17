@@ -38,10 +38,16 @@ cd "$LIBEST_DIR"
 make -j$(nproc)
 sudo make install
 
-# ===== STEP 4: Generate CA =====
-echo "[4/7] Generating CA certificates..."
+echo "[4/7] Checking existing CA..."
+
 cd "$SERVER_DIR"
-./createCA.sh
+
+if [ -f "$SERVER_DIR/estCA/cacert.crt" ]; then
+    echo "✅ Existing CA found, skipping regeneration"
+else
+    echo "⚠️ No CA found, generating new CA..."
+    ./createCA.sh
+fi
 
 # ===== STEP 5: Prepare cacert.pem =====
 echo "[5/7] Preparing cacert.pem..."
