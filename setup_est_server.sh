@@ -62,6 +62,58 @@ echo "✅ CA Certificate Path:"
 echo "$CACERT_PATH"
 echo ""
 
+# ===== STEP 5.5: Regenerate server cert with correct IP SAN =====
+echo "[5.5/7] Generating server TLS cert with SAN for $IP_ADDR..."
+
+cd "$SERVER_DIR/estCA"
+
+cat > server_san.cnf << EOF
+[req]
+default_bits       = 2048
+prompt             = no
+distinguished_name = dn
+x509_extensions    = v3_req
+
+[dn]
+CN = $IP_ADDR
+
+[v3_req]
+subjectAltName = IP:$IP_ADDR
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+EOF
+
+# Generate new key
+openssl genrsa -out private/estserverkey.pem 2048
+
+# Generate CSR
+openssl req -new \
+    -key private/estserverkey.pem \
+    -out estserver.csr \
+    -config server_san.cnf
+
+# Sign with the EST CA
+openssl x509 -req \
+    -in estserver.csr \
+    -CA cacert.crt \
+    -CAkey private/cakey.pem \
+    -CAcreateserial \
+    -out estservercert.pem \
+    -days 825 \
+    -extensions v3_req \
+    -extfile server_san.cnf
+
+# Combine cert + key into one file (as runserver.sh expects)
+cat estservercert.pem private/estserverkey.pem > private/estservercertandkey.pem
+
+echo "✅ Server cert regenerated with SAN: IP:$IP_ADDR"
+
+cp "$SERVER_DIR/estCA/cacert.crt" "$SERVER_DIR/trustedcerts.crt"
+echo "✅ trustedcerts.crt updated"
+
+# Verify
+openssl x509 -in private/estservercertandkey.pem -noout -text | grep -A1 "Subject Alternative"
+
 # ===== STEP 6: Allow firewall =====
 echo "[6/7] Configuring firewall..."
 sudo ufw allow $PORT/tcp || true
