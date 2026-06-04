@@ -169,6 +169,10 @@ echo "[6/7] Configuring RADIUS clients..."
 
 SUBNET=$(echo "$IP_ADDR" | cut -d. -f1-3).0/24
 
+# Remove existing elo_device_subnet entry if present
+sudo sed -i '/# === Added by setup_freeradius.sh ===/,/^}/d' "$RADIUS_DIR/clients.conf"
+
+# Add fresh entry
 sudo tee -a "$RADIUS_DIR/clients.conf" > /dev/null << EOF
 
 # === Added by setup_freeradius.sh ===
