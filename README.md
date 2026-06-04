@@ -119,6 +119,102 @@ EST CA (cacert.pem) — used to verify RADIUS server cert
 
 ---
 
+## Testing & Debug
+---
+
+### Step 1 — Static IP setup (direct cable mode, no router)
+
+**On PC:**
+```bash
+sudo ip addr flush dev enp3s0
+sudo ip addr add 192.168.100.1/24 dev enp3s0
+sudo ip link set enp3s0 up
+```
+
+**On ELO device (via ADB):**
+```bash
+adb shell ip addr flush dev eth0
+adb shell ip addr add 192.168.100.2/24 dev eth0
+adb shell ip link set eth0 up
+```
+
+---
+
+### Step 2 — Start the FreeRADIUS logs in debug mode
+
+```bash
+sudo systemctl stop freeradius
+sudo freeradius -X
+```
+
+---
+
+### Step 3 — Verify RADIUS auth independently
+
+Before connecting the device, confirm FreeRADIUS is working:
+```bash
+radtest estuser estpwd 192.168.100.1 0 testing123
+```
+Expected output:
+```
+Received Access-Accept
+```
+
+---
+
+### Step 4 — Expected success sequence
+
+**FreeRADIUS should show:**
+```
+files: users: Matched entry estuser at line 1
+mschap: Found Cleartext-Password, hashing to create NT-Password
+eap_peap: Tunneled authentication was successful
+Sent Access-Accept
+```
+
+**hostapd should show:**
+```
+CTRL-EVENT-EAP-STARTED
+IEEE 802.1X: authenticated - EAP type: 25 (PEAP)
+AP-STA-CONNECTED 1c:ee:c9:40:00:13
+```
+
+**Device logs should show:**
+```
+EAPOL: SUPP_PAE entering state AUTHENTICATED
+EAP: Authentication completed successfully
+```
+
+---
+
+### Teardown — Restore DHCP after testing
+
+```bash
+# Remove static IP
+sudo ip addr del 192.168.100.1/24 dev enp3s0
+
+# Re-request DHCP from router
+sudo dhclient enp3s0
+
+# Verify IP restored
+ip addr show enp3s0
+```
+
+---
+
+### Common failures and fixes
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `[files] = noop` in FreeRADIUS | User entry in wrong file | Add to `/etc/freeradius/3.0/mods-config/files/authorize` not `/users` |
+| `No Cleartext-Password` | Spaces instead of tab in user entry | Use `printf '%s\t'` — verify with `cat -A` shows `^I` |
+| `No Auth-Type found` | User not found at all | Check `sudo cat -A /etc/freeradius/3.0/mods-config/files/authorize \| head -3` |
+| hostapd: `authentication failed - EAP type: 25` | RADIUS rejecting | Fix FreeRADIUS first, confirm `radtest` returns `Access-Accept` |
+| Device keeps retrying EAPOL | Auth loop | Check FreeRADIUS -X output for root cause |
+| `[files] = noop` after correct file | `mods-enabled/files` not symlinked | `sudo ln -s ../mods-available/files /etc/freeradius/3.0/mods-enabled/` |
+
+---
+
 ## Notes
 
 - **Direct cable required** — EAPOL frames are Layer 2 and do not pass through a router or switch unless it supports 802.1X (managed switch)
