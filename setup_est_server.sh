@@ -134,6 +134,7 @@ echo "port: $PORT"
 echo "username: estuser"
 echo "password: estpwd"
 echo "ca_cert: copy from $CACERT_PATH"
+cat $CACERT_PATH
 echo ""
 
 # ===== STEP 8: Run server =====
