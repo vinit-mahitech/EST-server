@@ -1,224 +1,165 @@
-# ELO 802.1X Test Environment Setup
+# 802.1X Enterprise Wi-Fi Test Suite (EST + FreeRADIUS)
 
-This repository contains two scripts to set up a complete local 802.1X enterprise authentication environment for testing ELO devices:
+An all-in-one test setup for automated **Enrollment over Secure Transport (EST)** certificate provisioning and **802.1X Enterprise Wi-Fi authentication**.
 
-| Script | Purpose |
-|---|---|
-| `setup_est_server.sh` | Sets up the EST (Enrollment over Secure Transport) server using Cisco `libest` |
-| `setup_freeradius.sh` | Sets up FreeRADIUS + hostapd for 802.1X PEAP/MSCHAPv2 authentication |
+This repository provides scripts to spin up a local EST server (using Cisco `libest`) and a **FreeRADIUS** server supporting all 4 major EAP authentication methods (**EAP-TLS**, **EAP-PEAP**, **EAP-TTLS**, **EAP-PWD**) simultaneously.
 
 ---
 
-## Prerequisites
+## 🚀 Supported EAP Methods
 
-- Ubuntu/Debian Linux PC
-- Run `setup_est_server.sh` **before** `setup_freeradius.sh` (RADIUS cert is signed by the EST CA)
-- Direct ethernet cable between PC and ELO device (EAPOL is Layer 2 — does not pass through a router)
+| EAP Method | EAP ID | Authentication Type | Required Credentials |
+| :--- | :--- | :--- | :--- |
+| **EAP-TLS** | `method=13` | EST Client & Server Certificates | CA Cert (`test<Serial>_ca`), User Cert (`test<Serial>_user`), Domain |
+| **EAP-PEAP** | `method=25` | Inner Tunnel Username & Password | User: `estuser`, Pass: `estpwd` |
+| **EAP-TTLS** | `method=21` | Tunneled TLS Username & Password | User: `estuser`, Pass: `estpwd` |
+| **EAP-PWD** | `method=52` | Pre-Shared Password (Dragonfly ECC) | User: `estuser`, Pass: `estpwd` |
 
 ---
 
-## setup_est_server.sh
+## 🏗️ System Architecture
 
-Automates the setup of a local EST server using Cisco `libest`.
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Linux PC (Server Host)                           │
+│                                                                             │
+│ 1. Cisco libest EST Server (Port 8085) ──► Issues client/CA certs           │
+│ 2. FreeRADIUS Server (Port 1812)     ──► Handles TLS / PEAP / TTLS / PWD    │
+└──────────────────────┬──────────────────────────────────────────────────────┘
+                       │ RADIUS (UDP Port 1812)
+                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Hardware Access Point (Router)                      │
+│                                                                             │
+│ • SSID: est-test (or custom SSID)                                           │
+│ • Security: WPA/WPA2-Enterprise (802.1X)                                    │
+│ • Primary RADIUS Server IP: <PC_IP> (Port 1812, Secret: testing123)         │
+└──────────────────────┬──────────────────────────────────────────────────────┘
+                       │ Wi-Fi (802.1X EAP)
+                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Android Test Device                              │
+│                                                                             │
+│ 1. Test App / SDK ─────► Enrolls client certificate from EST server         │
+│ 2. Android Settings ───► Connects using EAP-TLS / PEAP / TTLS / PWD         │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### What it does
+---
 
-- Clones libest source (if not already present)
-- Builds and installs libest
-- Generates CA certificates
-- Creates `cacert.pem` from the generated CA
-- Generates a server TLS cert with correct IP SAN
-- Configures firewall to allow EST port (8085)
-- Starts the EST server
+## 📋 Prerequisites
 
-### Usage
+- **Linux PC** (Ubuntu / Debian recommended)
+- **Hardware Wi-Fi Router** with **WPA/WPA2-Enterprise** support
+- **Android Device** connected to the same local network
+
+---
+
+## 🛠️ Installation & Setup
+
+### Step 1: Clone Repository & Start EST Server
+
+Run `setup_est_server.sh` to clone/build Cisco `libest`, generate the CA certificates, and start the EST server on port `8085`:
 
 ```bash
-chmod +x setup_est_server.sh
 ./setup_est_server.sh
 ```
 
-### Output
-
-```
-server_url : <SERVER_IP>
-port       : 8085
-username   : estuser
-password   : estpwd
-ca_cert    : libest/example/server/estCA/cacert.pem
+*Verify EST Server:*
+```bash
+curl -k https://<YOUR_PC_IP>:8085/.well-known/est/cacerts
 ```
 
-### Test command (run from another PC on the same network)
+---
+
+### Step 2: Configure & Start FreeRADIUS
+
+Run `setup_all_eap_freeradius.sh` to configure FreeRADIUS with the EST CA certificates and enable support for all 4 EAP methods. The script automatically launches FreeRADIUS in live debug mode (`-X`) at the end:
 
 ```bash
-curl -k https://<SERVER_IP>:8085/.well-known/est/cacerts
+./setup_all_eap_freeradius.sh
 ```
 
 ---
 
-## setup_freeradius.sh
+### Step 3: Configure Wireless Router (WPA-Enterprise)
 
-Automates FreeRADIUS setup for PEAP/MSCHAPv2 and generates a `hostapd_wired.conf` to use the PC as a wired 802.1X authenticator.
+Log into your Wi-Fi router's admin interface (e.g. `http://192.168.0.1`):
 
-### What it does
-
-1. Detects the ethernet interface automatically (`enp3s0`, `eth0`, etc.)
-2. Installs FreeRADIUS and hostapd (skips if already installed)
-3. Generates a RADIUS server TLS cert signed by the EST CA
-4. Configures EAP module for PEAP/MSCHAPv2
-5. Adds EAP user credentials to the correct authorize file
-6. Configures RADIUS client subnet in `clients.conf`
-7. Generates DH parameters (if missing)
-8. Starts FreeRADIUS
-9. Generates `hostapd_wired.conf` and starts hostapd
-
-### Usage
-
-```bash
-chmod +x setup_freeradius.sh
-./setup_freeradius.sh
-```
-
-### Output
-
-```
-RADIUS server IP  : <SERVER_IP>
-RADIUS port       : 1812
-RADIUS secret     : testing123
-EAP user          : estuser
-EAP password      : estpwd
-```
-
-### Test RADIUS auth
-
-```bash
-radtest estuser estpwd <SERVER_IP> 0 testing123
-```
-
-Expected: `Received Access-Accept`
+1. **SSID**: Set to `est-test`.
+2. **Security Mode**: Select **WPA/WPA2-Enterprise** (or 802.1X Enterprise).
+3. **Primary RADIUS Server IP**: Set to your PC's IP address.
+4. **RADIUS Port**: `1812`
+5. **Shared Secret / Password**: `testing123`
+6. Save & Apply.
 
 ---
 
-## Full Stack Architecture
+## 📱 Device Connection Guide
 
-```
-ELO Device (eth0)
-      |
-      | EAPOL (Layer 2 — direct cable only, no router)
-      ↓
-PC running hostapd (enp3s0)
-      |
-      | RADIUS/UDP (Layer 3)
-      ↓
-FreeRADIUS (port 1812)
-      |
-      | PEAP/MSCHAPv2 inner tunnel
-      ↓
-EST CA (cacert.pem) — used to verify RADIUS server cert
-```
+**Enroll Certificate**: Use your test app / SDK to enroll a certificate from `https://<YOUR_PC_IP>:8085`.
+
+### A. EAP-TLS (Certificate Authentication)
+
+**Connect Wi-Fi (`est-test`)**:
+   - **EAP method**: `TLS`
+   - **CA certificate**: `test<Serial>_ca`
+   - **User certificate**: `test<Serial>_user`
+   - **Online Certificate Status**: `Do not verify`
+   - **Domain**: `<YOUR_PC_IP>` *(matches RADIUS server certificate CN)*
+   - **Identity**: `estuser`
+   - Tap **Connect**.
 
 ---
 
-## Testing & Debug
----
+### B. EAP-PEAP (Username & Password)
 
-### Step 1 — Static IP setup (direct cable mode, no router)
-
-**On PC:**
-```bash
-sudo ip addr flush dev enp3s0
-sudo ip addr add 192.168.100.1/24 dev enp3s0
-sudo ip link set enp3s0 up
-```
-
-**On ELO device (via ADB):**
-```bash
-adb shell ip addr flush dev eth0
-adb shell ip addr add 192.168.100.2/24 dev eth0
-adb shell ip link set eth0 up
-```
+**Connect Wi-Fi (`est-test`)**:
+   - **EAP method**: `PEAP`
+   - **Phase 2 authentication**: `MSCHAPV2`
+   - **CA certificate**: `test<Serial>_ca`
+   - **Online Certificate Status**: `Do not verify`
+   - **Domain**: `<YOUR_PC_IP>`
+   - **User certificate**: `Do not provide`
+   - **Identity**: `estuser`
+   - **Password**: `estpwd`
+   - Tap **Connect**.
 
 ---
 
-### Step 2 — Start the FreeRADIUS logs in debug mode
+### C. EAP-TTLS (Tunneled TLS)
 
-```bash
-sudo systemctl stop freeradius
-sudo freeradius -X
-```
-
----
-
-### Step 3 — Verify RADIUS auth independently
-
-Before connecting the device, confirm FreeRADIUS is working:
-```bash
-radtest estuser estpwd 192.168.100.1 0 testing123
-```
-Expected output:
-```
-Received Access-Accept
-```
+**Connect Wi-Fi (`est-test`)**:
+   - **EAP method**: `TTLS`
+   - **Phase 2 authentication**: `MSCHAPV2`
+   - **CA certificate**: `test<Serial>_ca`
+   - **Online Certificate Status**: `Do not verify`
+   - **Domain**: `<YOUR_PC_IP>`
+   - **User certificate**: `Do not provide`
+   - **Identity**: `estuser`
+   - **Password**: `estpwd`
+   - Tap **Connect**.
 
 ---
 
-### Step 4 — Expected success sequence
+### D. EAP-PWD (Pre-Shared Password)
 
-**FreeRADIUS should show:**
-```
-files: users: Matched entry estuser at line 1
-mschap: Found Cleartext-Password, hashing to create NT-Password
-eap_peap: Tunneled authentication was successful
-Sent Access-Accept
-```
-
-**hostapd should show:**
-```
-CTRL-EVENT-EAP-STARTED
-IEEE 802.1X: authenticated - EAP type: 25 (PEAP)
-AP-STA-CONNECTED 1c:ee:c9:40:00:13
-```
-
-**Device logs should show:**
-```
-EAPOL: SUPP_PAE entering state AUTHENTICATED
-EAP: Authentication completed successfully
-```
+**Connect Wi-Fi (`est-test`)**:
+   - **EAP method**: `PWD`
+   - **Identity**: `estuser`
+   - **Password**: `estpwd`
+   - Tap **Connect**.
 
 ---
 
-### Teardown — Restore DHCP after testing
+## 🔍 Debugging & Logs
 
-```bash
-# Remove static IP
-sudo ip addr del 192.168.100.1/24 dev enp3s0
+- **Monitor FreeRADIUS Live Debug Stream**:
+  ```bash
+  sudo freeradius -X
+  ```
 
-# Re-request DHCP from router
-sudo dhclient enp3s0
-
-# Verify IP restored
-ip addr show enp3s0
-```
-
----
-
-### Common failures and fixes
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| `[files] = noop` in FreeRADIUS | User entry in wrong file | Add to `/etc/freeradius/3.0/mods-config/files/authorize` not `/users` |
-| `No Cleartext-Password` | Spaces instead of tab in user entry | Use `printf '%s\t'` — verify with `cat -A` shows `^I` |
-| `No Auth-Type found` | User not found at all | Check `sudo cat -A /etc/freeradius/3.0/mods-config/files/authorize \| head -3` |
-| hostapd: `authentication failed - EAP type: 25` | RADIUS rejecting | Fix FreeRADIUS first, confirm `radtest` returns `Access-Accept` |
-| Device keeps retrying EAPOL | Auth loop | Check FreeRADIUS -X output for root cause |
-| `[files] = noop` after correct file | `mods-enabled/files` not symlinked | `sudo ln -s ../mods-available/files /etc/freeradius/3.0/mods-enabled/` |
-
----
-
-## Notes
-
-- **Direct cable required** — EAPOL frames are Layer 2 and do not pass through a router or switch unless it supports 802.1X (managed switch)
-- The RADIUS server cert is signed by the EST CA — both scripts must share the same `libest` directory
-- The ethernet interface is detected automatically — no hardcoded `eth0`
-- The user credentials file is written to `/etc/freeradius/3.0/mods-config/files/authorize` (not `/etc/freeradius/3.0/users`)
-- For production/customer environments, replace hostapd with a managed 802.1X switch (Cisco, HP/Aruba, TP-Link managed series)
+- **Monitor Android Wi-Fi & EAP Logs via ADB**:
+  ```bash
+  adb logcat -c && adb logcat | grep -iE "wpa_supplicant|Wifi|EAP"
+  ```
