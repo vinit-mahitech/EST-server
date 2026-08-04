@@ -131,7 +131,7 @@ Then go to **Android Settings -> Ethernet -> 802.1X EAP** and select your desire
    - **CA certificate**: `test<Serial>_ca`
    - **User certificate**: `test<Serial>_user`
    - **Online Certificate Status**: `Do not verify`
-   - **Domain**: `localhost` *(or `<YOUR_PC_IP>`)*
+   - **Domain**: `<YOUR_PC_IP>` *(matches RADIUS server certificate CN)*
    - **Identity**: `estuser`
    - Tap **Connect**.
 
