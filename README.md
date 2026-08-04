@@ -95,6 +95,31 @@ Log into your Wi-Fi router's admin interface (e.g. `http://192.168.0.1`):
 
 ---
 
+## 🔌 Direct Wired Ethernet Testing (No Switch / Router Needed)
+
+If you need to test **Wired 802.1X Ethernet (`eth0`)** directly using an Ethernet cable without an 802.1X hardware switch or router, run `setup_wired_hostapd.sh` on your PC:
+
+```bash
+./setup_wired_hostapd.sh
+```
+
+### What `setup_wired_hostapd.sh` does:
+1. Detects your PC's Ethernet interface and assigns static IP `192.168.100.1/24`.
+2. Generates `hostapd_wired.conf` configured for `driver=wired` pointing to FreeRADIUS (`127.0.0.1:1812`).
+3. Starts `hostapd` in wired mode to turn your PC's Ethernet port into a **Software 802.1X Port Authenticator**.
+
+### Configure Android Device IP for Direct Link:
+Run these commands via ADB to set static IP on your test device:
+```bash
+adb shell ip addr flush dev eth0
+adb shell ip addr add 192.168.100.2/24 dev eth0
+adb shell ip link set eth0 up
+```
+
+Then go to **Android Settings -> Ethernet -> 802.1X EAP** and select your desired EAP method (**EAP-TLS**, **PEAP**, **TTLS**, or **PWD**).
+
+---
+
 ## 📱 Device Connection Guide
 
 **Enroll Certificate**: Use your test app / SDK to enroll a certificate from `https://<YOUR_PC_IP>:8085`.
@@ -106,7 +131,7 @@ Log into your Wi-Fi router's admin interface (e.g. `http://192.168.0.1`):
    - **CA certificate**: `test<Serial>_ca`
    - **User certificate**: `test<Serial>_user`
    - **Online Certificate Status**: `Do not verify`
-   - **Domain**: `<YOUR_PC_IP>` *(matches RADIUS server certificate CN)*
+   - **Domain**: `localhost` *(or `<YOUR_PC_IP>`)*
    - **Identity**: `estuser`
    - Tap **Connect**.
 
