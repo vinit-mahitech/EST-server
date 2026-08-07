@@ -2,6 +2,17 @@
 
 set -e
 
+# Install FreeRADIUS if not installed
+
+if ! command -v freeradius >/dev/null 2>&1; then
+    echo "FreeRADIUS not found. Installing..."
+
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y freeradius
+
+    echo "FreeRADIUS installed."
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EST_SERVER_DIR="$SCRIPT_DIR/libest/example/server"
 CA_CERT="$EST_SERVER_DIR/estCA/cacert.pem"
